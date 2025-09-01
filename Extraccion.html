@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extracción de Tablas de Múltiples PDFs a Excel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #c300ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #e9f7ef;
+            color: #2a642a;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Extraer Tablas de Múltiples PDFs a Excel</h1>
+        <p>Sube uno o más archivos PDF para extraer las tablas y convertirlas a un solo Excel:</p>
+        <input type="file" id="pdfFile" accept=".pdf" multiple />
+        <button onclick="extractTablesToExcel()">Extraer Tablas</button>
+        <button onclick="clearFiles()">Limpiar</button>
+        <div id="result"></div>
+    </div>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.worker.min.js';
+
+        // Encabezados fijos
+        const fixedHeaders = [
+            ["Entrega", ""],
+            [],
+            ["#", "Art.", "Bono", "Descripción", "Lote", "Cantidad", "Fecha Venc.", "Bod.", "Orig."]
+        ];
+
+        // Datos extraídos de los PDFs (solo filas de datos)
+        let extractedData = [];
+
+        async function extractTablesToExcel() {
+            const fileInput = document.getElementById('pdfFile');
+            const resultDiv = document.getElementById('result');
+
+            if (!fileInput.files.length) {
+                alert('Por favor, selecciona al menos un archivo PDF.');
+                return;
+            }
+
+            // Procesar cada PDF
+            for (const file of fileInput.files) {
+                await processPDF(file);
+            }
+
+            // Crear el archivo Excel con los encabezados fijos y los datos extraídos
+            const wb = XLSX.utils.book_new();
+            const wsData = [...fixedHeaders, ...extractedData];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, 'Tablas_Lotes');
+            XLSX.writeFile(wb, 'Tablas_Extraidas.xlsx');
+
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = '¡Extracción completada! El archivo Excel ha sido descargado.';
+        }
+
+        async function processPDF(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+            const pdf = await loadingTask.promise;
+            let foundTableStart = false;
+            const regexOnlyText = /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/;
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const initialIndex = textContent.items.findIndex(item => item.str.includes("Orig."));
+                const finalIndex = textContent.items.findIndex(item => item.str.includes("Página"));
+                const textItems = textContent.items.slice(initialIndex+1, finalIndex);
+                let currentRow = [];
+                let previousY = null;
+
+                let countFiles = 0;
+                for (let index = 0; index < textItems.length; index++) {                    
+                     const text = textItems[index].str.trim();
+                     const postText = ((index + 1) < textItems.length) ? textItems[index + 1].str.trim() : "";
+
+                    if(countFiles == 5 && text == "CON"){
+                        const wordPost = textItems[index + 2].str.trim();
+                        currentRow.push(text + " " + wordPost);                        
+                        countFiles += 2;
+                        index += 2;                        
+                    }else if(countFiles == 5 && text == "CON/BO"){
+                        const wordPost = textItems[index + 2].str.trim();
+                        currentRow.push(text + " " + wordPost);                        
+                        countFiles += 2;
+                        index += 2;                        
+                    }else if(countFiles == 4 && text == "" && postText.length > 7){
+                        currentRow.push("VACIO"); 
+                        currentRow.push(postText); 
+                        index++;                    
+                    }else if ((countFiles == 7 || countFiles == 8 ) && regexOnlyText.test(postText)) {
+                       currentRow.push(text + " " + postText);
+                       countFiles+=2;
+                       index+=2;
+                    }else if (text !== "") {
+                     currentRow.push(text);
+                   }
+
+                   countFiles++;
+
+                   if(currentRow.length === 8){
+                    extractedData.push(currentRow);
+                    currentRow = [];
+                    countFiles = 0;
+                   }
+                }
+            }
+        }
+
+        function clearFiles() {
+            const fileInput = document.getElementById('pdfFile');
+            const resultDiv = document.getElementById('result');
+            fileInput.value = '';
+            extractedData = [];
+            resultDiv.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
