@@ -89,15 +89,16 @@
 
             resultDiv.style.display = 'block';
             resultDiv.textContent = '¡Extracción completada! El archivo Excel ha sido descargado.';
+            // Limpiar datos para la próxima extracción
         }
-
         async function processPDF(file) {
             const arrayBuffer = await file.arrayBuffer();
             const loadingTask = pdfjsLib.getDocument(arrayBuffer);
             const pdf = await loadingTask.promise;
             let foundTableStart = false;
             const regexOnlyText = /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/;
-
+            
+            // Recorrer cada página del PDF
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
@@ -107,11 +108,13 @@
                 let currentRow = [];
                 let previousY = null;
 
+                // Contador para controlar la cantidad de columnas procesadas
                 let countFiles = 0;
                 for (let index = 0; index < textItems.length; index++) {                    
                      const text = textItems[index].str.trim();
                      const postText = ((index + 1) < textItems.length) ? textItems[index + 1].str.trim() : "";
 
+                    // Detectar cambio significativo en la posición Y para identificar nuevas filas
                     if(countFiles == 5 && text == "CON"){
                         const wordPost = textItems[index + 2].str.trim();
                         currentRow.push(text + " " + wordPost);                        
@@ -145,6 +148,7 @@
             }
         }
 
+        // Si la posición Y cambia significativamente, es probable que sea una nueva fila
         function clearFiles() {
             const fileInput = document.getElementById('pdfFile');
             const resultDiv = document.getElementById('result');
